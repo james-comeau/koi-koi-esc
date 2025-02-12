@@ -1,0 +1,1075 @@
+
+
+var INSTANT_WIN_CONDITIONS = {
+    NONE: null,
+    TESHI: "Teshi",
+    KUTTSUKI: "Kuttsuki"
+};
+
+var MOVE_TYPES = {
+    DROP: 0,
+    TAKE: 1
+};
+
+var ROUND_STATES = {
+    PLAY: 0,
+    REDEAL: 1,
+    SCORED: 2,
+    DRAW: 3
+};
+
+var OPTION_DEFINITIONS = {
+    PLAYER_1:           {name: 'Player 1',                      choices: ['human', 'computer'], default: 'human'},
+    PLAYER_2:           {name: 'Player 2',                      choices: ['human', 'computer'], default: 'computer'},
+    NUM_ROUNDS:         {name: 'Rounds',                        choices: [3, 6, 9, 12],         default: 3},
+    MONTH_OR_FLOWER:    {name: 'Month or Flower names',         choices: ['month', 'flower'],   default: 'month'},
+    CARD_SORT:          {name: 'Card sort order',               choices: ['suit', 'rank'],      default: 'suit'},
+    SAKE_CUP_KASU:      {name: 'Sake cup as Kasu',              choices: [true, false],         default: true},
+    MOON_CHERRY_VIEWING:{name: 'Moon/Cherry Blossom Viewing',   choices: [true, false],         default: true},
+    MONTHLY_CARDS:      {name: 'Monthly Cards',                 choices: [true, false],         default: true},
+    RANDOM_MONTH:       {name: 'Randomize Starting Month',      choices: [true, false],         default: true},
+    DOUBLE_OVER_7:      {name: 'Double points over 7',          choices: [true, false],         default: false},
+    OYA_KEN:            {name: 'Dealer\'s Privilege',           choices: [true, false],         default: false},
+};
+
+var options = OPTION_DEFINITIONS.map(&(local o) => o.default);
+
+class Card{
+    MONTHS: [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+    ],
+
+    FLOWERS: [
+        'Pine',
+        'Plum blossom',
+        'Cherry blossom',
+        'Wisteria',
+        'Iris',
+        'Peony',
+        'Bush clover',
+        'Pampas grass',
+        'Chrysanthemum',
+        'Maple',
+        'Willow',
+        'Paulownia',
+    ],
+
+    RANKS: [
+        'Hikari',
+        'Tane',
+        'Tanzaku',
+        'Kasu'
+    ],
+    
+    __construct(local suit, local rank, local name){
+        this.suit = suit;
+        this.rank = rank;
+        this.name = name;
+    },
+    
+    __toString(){
+        return "%s, %s: %s".format(
+            this.getSuitName(this.suit),
+            this.RANKS[this.rank],
+            this.name
+        );
+    },
+    
+    getSuitName(local suit){
+        return (options.MONTH_OR_FLOWER === 'month' ? this.MONTHS : this.FLOWERS)[suit];
+    }
+};
+
+var CARDS = [
+    new Card(0, 0, 'Crane and Sun'),
+    new Card(0, 2, 'Poetry tanzaku'),
+    new Card(0, 3, 'Kasu A'),
+    new Card(0, 3, 'Kasu B'),
+    
+    new Card(1, 1, 'Bush warbler'),
+    new Card(1, 2, 'Poetry tanzaku'),
+    new Card(1, 3, 'Kasu A'),
+    new Card(1, 3, 'Kasu B'),
+    
+    new Card(2, 0, 'Curtain'),
+    new Card(2, 2, 'Poetry tanzaku'),
+    new Card(2, 3, 'Kasu A'),
+    new Card(2, 3, 'Kasu B'),
+    
+    new Card(3, 1, 'Cuckoo'),
+    new Card(3, 2, 'Plain tanzaku'),
+    new Card(3, 3, 'Kasu A'),
+    new Card(3, 3, 'Kasu B'),
+    
+    new Card(4, 1, 'Eight-plank bridge'),
+    new Card(4, 2, 'Plain tanzaku'),
+    new Card(4, 3, 'Kasu A'),
+    new Card(4, 3, 'Kasu B'),
+    
+    new Card(5, 1, 'Butterflies'),
+    new Card(5, 2, 'Blue tanzaku'),
+    new Card(5, 3, 'Kasu A'),
+    new Card(5, 3, 'Kasu B'),
+    
+    new Card(6, 1, 'Boar'),
+    new Card(6, 2, 'Plain tanzaku'),
+    new Card(6, 3, 'Kasu A'),
+    new Card(6, 3, 'Kasu B'),
+    
+    new Card(7, 0, 'Full moon'),
+    new Card(7, 1, 'Geese'),
+    new Card(7, 3, 'Kasu A'),
+    new Card(7, 3, 'Kasu B'),
+    
+    new Card(8, 1, 'Sake cup'),
+    new Card(8, 2, 'Blue tanzaku'),
+    new Card(8, 3, 'Kasu A'),
+    new Card(8, 3, 'Kasu B'),
+    
+    new Card(9, 1, 'Deer'),
+    new Card(9, 2, 'Blue tanzaku'),
+    new Card(9, 3, 'Kasu A'),
+    new Card(9, 3, 'Kasu B'),
+    
+    new Card(10, 0, 'Ono no Michikaze'),
+    new Card(10, 1, 'Swallow'),
+    new Card(10, 2, 'Plain tanzaku'),
+    new Card(10, 3, 'Lightning'),
+    
+    new Card(11, 0, 'Chinese phoenix'),
+    new Card(11, 3, 'Kasu A'),
+    new Card(11, 3, 'Kasu B'),
+    new Card(11, 3, 'Kasu C'),
+];
+
+var SIMPLE_YAKU = {
+    'Kasu': {
+        cond() => this.rank === 3 || (options.SAKE_CUP_KASU && this.name === 'Sake cup'),
+        target: 10,
+        score(local hits) => hits - 10 + 1
+    },
+    'Tanzaku': {
+        cond() => this.rank === 2,
+        target: 5,
+        score(local hits) => hits - 5 + 1
+    },
+    'Blue Tanzaku': {
+        cond() => this.name === 'Blue tanzaku',
+        target: 3,
+        score() => 5
+    },
+    'Poetry Tanzaku': {
+        cond() => this.name === 'Poetry tanzaku',
+        target: 3,
+        score() => 5
+    },
+    'Poetry and Blue Tanzaku': {
+        cond() => this.name === 'Poetry tanzaku' || this.name === 'Blue tanzaku',
+        target: 6,
+        score() => 10
+    },
+    'Tane': {
+        cond() => this.rank === 1,
+        target: 5,
+        score(local hits) => hits - 5 + 1
+    },
+    'Boar, Deer, Butterfly': {
+        cond() => this.name === 'Boar' || this.name === 'Deer' || this.name === 'Butterflies',
+        target: 3,
+        score() => 5
+    }
+};
+
+function evaluateYaku(local game, local pool, local exclude, local changed){
+    local missed = [];
+    local yaku = [];
+    local scored = false;
+    
+    for(local name: data in SIMPLE_YAKU){
+        local matches = pool.filter(data.cond);
+        
+        if(#matches >= data.target){
+            yaku.push({name, score: data.score(#matches)});
+            
+            scored = scored || #matches.intersect(changed) !== 0;
+        }else if(#matches < data.target && #CARDS.diff(exclude).filter(data.cond) >= data.target){
+            missed.push({name, score: data.score(data.target), needed: data.target - #matches});
+        }
+    }
+    
+    if(options.MONTHLY_CARDS){
+        var currSuit = game.getCurrentSuit();
+        local suitCond = &() => this.suit === currSuit;
+        
+        if(local matches = pool.filter(suitCond); #matches > 0){
+            if(#matches === 4){
+                yaku.push({
+                    name: 'Monthly Cards',
+                    score: 4
+                });
+                
+                scored = scored || #matches.intersect(changed) !== 0;
+            }else if(#exclude.filter(suitCond) === 0){
+                missed.push({
+                    name: 'Monthly Cards',
+                    score: 4,
+                    needed: 4 - #matches
+                });
+            }
+        }
+    }
+    
+    if(options.MOON_CHERRY_VIEWING){
+        local sakuraCond = &() => this.name === 'Sake cup' || this.name === 'Curtain';
+        local moonCond = &() => this.name === 'Sake cup' || this.name === 'Full moon';
+        
+        if(local matches = pool.filter(sakuraCond); #matches > 0){
+            local data = {
+                name: 'Cherry Blossom Viewing',
+                score: 5
+            };
+            
+            if(#matches === 2){
+                yaku.push(data);
+                
+                scored = scored || #matches.intersect(changed) !== 0;
+            }else if(#exclude.filter(sakuraCond) === 0){
+                data.needed = 1;
+                
+                missed.push(data);
+            }
+        }
+        
+        if(local matches = pool.filter(moonCond); #matches > 0){
+            local data = {
+                name: 'Moon Viewing',
+                score: 5
+            };
+            
+            if(#matches === 2){
+                yaku.push(data);
+                
+                scored = scored || #matches.intersect(changed) !== 0;
+            }else if(#exclude.filter(moonCond) === 0){
+                data.needed = 1;
+                
+                missed.push(data);
+            }
+        }
+    }
+    
+    local hikariCond = &() => this.rank === 0;
+    local rainyCond = &() => this.name === 'Ono no Michikaze';
+    
+    if(local matches = pool.filter(hikariCond); #matches > 0){
+        if(matches.some(rainyCond)){
+            if(#matches === 5){
+                yaku.push({
+                    name: 'Five Hikari',
+                    score: 15
+                });
+                
+                scored = scored || #matches.intersect(changed) !== 0;
+            }else if(#matches === 4){
+                yaku.push({
+                    name: 'Rainy Four Hikari',
+                    score: 7
+                });
+                
+                scored = scored || #matches.intersect(changed) !== 0;
+            }else if(#exclude.filter(hikariCond) < 2){
+                missed.push({
+                    name: 'Rainy Four Hikari',
+                    score: 7,
+                    needed: 4 - #matches
+                });
+            }
+        }else if(#matches === 4){
+            yaku.push({
+                name: 'Four Hikari',
+                score: 8
+            });
+            
+            scored = scored || #matches.intersect(changed) !== 0;
+        }else if(#matches === 3){
+            yaku.push({
+                name: 'Three Hikari',
+                score: 6
+            });            
+            
+            scored = scored || #matches.intersect(changed) !== 0;
+        }else if(#exclude.filter(hikariCond) - #exclude.filter(rainyCond) < 2){
+            missed.push({
+                name: 'Three Hikari',
+                score: 6,
+                needed: 3 - #matches
+            });
+        }
+    }
+    
+    yaku.sort(&(local a, local b) => b.score - a.score);
+    missed.sort(&(local a, local b) => a.score === b.score ? a.needed - b.needed : b.score - a.score);
+    
+    local points = 0;
+    
+    for(local x in yaku)
+        points += x.score;
+    
+    points = points >= 7 && options.DOUBLE_OVER_7 ? points * 2 : points;
+    
+    return {yaku, missed, scored, points};
+}
+
+function printCardList(local arr, local isChoice){
+    if(isChoice){
+        for(local i = 0, n = (#arr + 1) / 2; i < n; ++i){
+            local fmt = (i + n < #arr) ? "%d) %-39s%d) %-39s" : "%d) %-39s";
+            
+            IO.println(fmt.format(
+                i + 1, arr[i],
+                i + n + 1, arr[i + n]
+            ));
+        }
+    }else{
+        for(local i = 0, n = (#arr + 1) / 2; i < n; ++i){
+            local fmt = (i + n < #arr) ? "   %-39s   %-39s" : "   %-39s";
+            
+            IO.println(fmt.format(
+                arr[i], arr[i + n]
+            ));
+        }
+    }
+}
+
+function getIntInput(local prompt, local min, local max){
+    for(;;){
+        local val = Integer.tryParse(IO.input(prompt));
+        
+        if(val !== null && min <= val && val <= max)
+            return val;
+    }
+}
+
+function getBoolInput(local prompt){
+    for(;;){
+        local val = IO.input(prompt).toLowerCase();
+        
+        if(val === 'y' || val === 'n')
+            return val === 'y';
+    }
+}
+
+function cardComparator(local a, local b){
+    if(options.CARD_SORT === 'rank' && a.rank !== b.rank){
+        return a.rank - b.rank;
+    }
+    
+    return CARDS.indexOf(a) - CARDS.indexOf(b);
+}
+
+class Player{
+    __construct(local name){
+        this.name = name;
+        this.hand = [];
+        this.played = [];
+        this.score = 0;
+    },
+    
+    resetCards(){
+        this.hand = [];
+        this.played = [];
+    },
+    
+    getName(){ },
+    
+    getHand(){
+        return this.hand;
+    },
+    
+    getPlayed(){
+        return this.played;
+    },
+    
+    putInHand(local card){
+        this.hand.push(card).sort(cardComparator);
+    },
+    
+    removeCardsFromHand(local cards){
+        this.hand.removeAll(cards);
+    },
+    
+    addToPlayed(local cards){
+        this.played.append(cards).sort(cardComparator);
+    },
+    
+    isHandEmpty(){
+        return #this.hand === 0;
+    },
+    
+    addScore(local points){
+        this.score += points;
+    },
+    
+    getScore(){
+        return this.score;
+    },
+    
+    makeMove(local game, local otherPlayer){ },
+    
+    handleDraw(local game, local otherPlayer, local drawn){ },
+    
+    willCallKoi(local game, local otherPlayer){ }
+};
+
+class PlayerExit { };
+
+class HumanPlayer extends Player{
+    getName(){
+        return this.name .. ' (human)';
+    },
+    
+    showMenu(local game, local otherPlayer){
+        for(;;){
+            IO.println("1) Resume");
+            IO.println("2) Game stats");
+            IO.println("0) Exit");
+            
+            local choice = getIntInput("What would you like to do? ", 0, 2);
+            
+            if(choice === 1){
+                return;
+            }else if(choice === 2){
+                IO.println("Score: %d to %d, currently %s".format(
+                    this.score,
+                    otherPlayer.score,
+                    this.score < otherPlayer.score ? 'losing' :
+                    this.score > otherPlayer.score ? 'winning' :
+                    'tied'
+                ));
+                IO.println("Round: %d out of %d".format(game.getCurrentRound(), options.NUM_ROUNDS));
+                IO.println("Current Suit: %s".format(Card.getSuitName(game.getCurrentSuit())));
+            }else{
+                throw PlayerExit;
+            }
+        }
+    },
+    
+    makeMove(local game, local otherPlayer){
+        for(;;){
+            IO.println("Opponent Played:");
+            printCardList(otherPlayer.getPlayed());
+            
+            IO.println("You Played:");
+            printCardList(this.played);
+            
+            IO.println("On Table:");
+            printCardList(game.getTable());
+            
+            IO.println("Your Hand:");
+            printCardList(this.hand, true);
+            
+            IO.println("0) Menu");
+            
+            local choice = getIntInput("Play which card? ", 0, #this.hand);
+            
+            if(choice === 0){
+                this.showMenu(game, otherPlayer);
+                continue;
+            }
+            
+            IO.println();
+            
+            local chosenCard = this.hand[choice - 1];
+            
+            return this.handleDraw(game, otherPlayer, chosenCard);
+        }
+    },
+    
+    handleDraw(local game, local otherPlayer, var drawn){
+        local matches = game.getTable().filter(&() => this.suit === drawn.suit);
+        
+        if(#matches === 0){
+            return {
+                type: MOVE_TYPES.DROP,
+                cards: [drawn]
+            };
+        }
+        
+        if(#matches === 2){
+            for(;;){
+                printCardList(matches, true);
+                
+                IO.println("0) Menu");
+                local choice = getIntInput("Pick up which card? ", 0, 2);
+                
+                if(choice === 0){
+                    this.showMenu(game, otherPlayer);
+                    continue;
+                }
+                
+                IO.println();
+                
+                local chosenCard = matches[choice - 1];
+                
+                return {
+                    type: MOVE_TYPES.TAKE,
+                    cards: [drawn, chosenCard]
+                };
+            }
+        }else{
+            return {
+                type: MOVE_TYPES.TAKE,
+                cards: matches.unshift(drawn)
+            };
+        }
+    },
+    
+    willCallKoi(local game, local otherPlayer){
+        return getBoolInput("Call koi? (y/n): ");
+    }
+};
+
+
+class ComputerPlayer extends Player{
+    getName(){
+        return this.name .. ' (computer)';
+    },
+    
+    getCardsDesiredByOpponent(var game, local table, local otherPlayer){
+        var otherPlayed = otherPlayer.getPlayed();
+        var thisPlayed = this.played;
+        
+        return table
+            .map(&(local card) => {
+                local simulatedMatch = [card];
+                
+                local result = evaluateYaku(game, otherPlayed.concat(simulatedMatch), thisPlayed, simulatedMatch);
+                
+                return {card, result};
+            })
+            .sort(&(local a, local b) =>{
+                a = a.result;
+                b = b.result;
+                
+                if(a.scored !== b.scored)
+                    return b.scored - a.scored;
+                
+                if(a.points !== b.points)
+                    return b.points - a.points;
+                
+                for(local j = 0; ; ++j){
+                    if(!a.missed[j] || !b.missed[j])
+                        return #b.missed - #a.missed;
+                    
+                    if(a.missed[j].score !== b.missed[j].score)
+                        return b.missed[j].score - a.missed[j].score;
+                    else if(a.missed[j].needed !== b.missed[j].needed)
+                        return a.missed[j].needed - b.missed[j].needed;
+                }
+                
+                return 0;
+            })
+            .map(&() => this.card);
+    },
+    
+    chooseBestMove(local game, local hand, local table, local otherPlayer){
+        local scoring = [];
+        local nonScoring = [];
+        local drop = [];
+        
+        for(local card in hand){
+            var suit = card.suit;
+            
+            local matches = table.filter(&() => this.suit === suit);
+            
+            if(#matches === 0){
+                drop.push(card);
+            }else{
+                local possibleMoves;
+                
+                if(#matches === 2){
+                    possibleMoves = [
+                        [card, matches[0]],
+                        [card, matches[1]]
+                    ];
+                }else{
+                    possibleMoves = [matches.unshift(card)];
+                }
+                
+                for(local move in possibleMoves) {
+                    local result = evaluateYaku(game, this.played.concat(move), otherPlayer.getPlayed(), move);
+                    
+                    if(result.scored){
+                        scoring.push({
+                            cards: move,
+                            score: result.points,
+                            missed: result.missed
+                        });
+                    }else{
+                        nonScoring.push({
+                            cards: move,
+                            score: result.points,
+                            missed: result.missed
+                        });
+                    }
+                }
+            }
+        }
+        
+        var desiredByOpponent = this.getCardsDesiredByOpponent(game, table, otherPlayer);
+        
+        if(#scoring === 0 && #nonScoring === 0){
+            local candidates = drop.diff(desiredByOpponent);
+            local dropped;
+            
+            if(#candidates === 0){
+                /* Opponent wants them all! */
+                dropped = drop.sort(&(local a, local b) => {
+                    if(a.rank !== b.rank)
+                        return b.rank - a.rank;
+                    
+                    return desiredByOpponent.indexOf(b) - desiredByOpponent.indexOf(a);
+                })[-1];
+            }else{
+                dropped = candidates.sort(&(local a, local b) => a.rank - b.rank)[-1];
+            }
+            
+            return {
+                type: MOVE_TYPES.DROP,
+                cards: [dropped]
+            };
+        }
+        
+        local list;
+        
+        if(#scoring){
+            list = scoring;
+        }else{
+            local opponentWants = nonScoring.map(&() => {
+                local first = -1;
+                
+                for(local card in this.cards){
+                    if(local idx = desiredByOpponent.indexOf(card); idx !== -1 && idx < first)
+                        first = idx;
+                }
+                
+                return {move: this, first};
+            })
+            .filter(&() => this.first !== -1);
+            
+            if(#opponentWants !== 0){
+                /* Prioritize blocking opponent */
+                list = opponentWants
+                    .sort(&(local a, local b) => a.first - b.first)
+                    .map(&() => this.move);
+            }else{
+                list = nonScoring;
+            }
+        }
+        
+        local best = list[0];
+        
+        for(local i = 1; i < #list; ++i){
+            local move = list[i];
+            
+            if(move.score > best.score){
+                best = move;
+            }else if(move.score === best.score){
+                for(local j = 0; ; ++j){
+                    if(!move.missed[j] || !best.missed[j]){
+                        if(#move.missed > #best.missed)
+                            best = move;
+                        
+                        break;
+                    }
+                    
+                    if(move.missed[j].score !== best.missed[j].score){
+                        if(move.missed[j].score > best.missed[j].score)
+                            best = move;
+                        
+                        break;
+                    }else if(move.missed[j].needed !== best.missed[j].needed){
+                        if(move.missed[j].needed < best.missed[j].needed)
+                            best = move;
+                            
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return {
+            type: MOVE_TYPES.TAKE,
+            cards: best.cards
+        };
+    },
+    
+    makeMove(local game, local otherPlayer){
+        return this.chooseBestMove(game, this.hand, game.getTable(), otherPlayer);
+    },
+    
+    handleDraw(local game, local otherPlayer, local drawn){
+        return this.chooseBestMove(game, [drawn], game.getTable(), otherPlayer);
+    },
+    
+    willCallKoi(local game, local otherPlayer){
+        local myResult = evaluateYaku(game, this.played, otherPlayer.getPlayed(), []);
+        local theirResult = evaluateYaku(game, otherPlayer.getPlayed(), this.played, []);
+        
+        local myScore = this.score;
+        local theirScore = otherPlayer.getScore();
+        
+        if(options.NUM_ROUNDS - game.getCurrentRound() === 0)
+            return myScore + myResult.points <= theirScore;
+        
+        if(!game.isPlayerOya(this))
+            decision += 50;
+        
+        local decision = 0;
+        
+        local handWeights = [1000, 500, 100, 50, 0, -50, -100, -150, -200];
+        
+        decision += handWeights[#this.hand];
+        
+        if(myScore > theirScore)
+            decision += 10;
+        
+        decision += (theirScore - myScore) * 10;
+        
+        decision += (theirResult.points - myResult.points) * 5;
+        
+        decision += (myResult.points - 7) * 4;
+        
+        decision += (8 - #game.getTable()) * 2;
+        
+        local myNeeded = 10, theirNeeded = 10;
+        
+        if(#myResult.missed){
+            myNeeded = Math.min(...myResult.missed.map(&() => this.needed));
+            
+            for(local m in myResult.missed)
+                decision -= m.score * (4 - m.needed) * 2;
+        }
+        
+        if(#theirResult.missed){
+            theirNeeded = Math.min(...theirResult.missed.map(&() => this.needed));
+            
+            for(local m in theirResult.missed)
+                decision += m.score * (6 - m.needed) * 2;
+        }
+        
+        decision += (theirNeeded - myNeeded) * 50;
+        
+        return decision < 0;
+    }
+};
+
+class Game{
+    __construct(){
+        this.deck = clone CARDS;
+    },
+    
+    initGame(){
+        this.players = [
+            new (options.PLAYER_1 === 'human' ? HumanPlayer : ComputerPlayer)('Player 1'),
+            new (options.PLAYER_2 === 'human' ? HumanPlayer : ComputerPlayer)('Player 2')
+        ];
+        
+        this.table = [];
+        
+        local oya = Math.randInt(0, 1);
+        
+        this.oyaPlayer = this.players[oya];
+        this.koPlayer = this.players[1 - oya];
+        
+        this.currSuit = (options.RANDOM_MONTH ? Math.randInt(0, 11) : 0);
+        this.currRound = 1;
+        this.drawIdx = 0;
+    },
+    
+    getTable(){
+        return this.table;
+    },
+    
+    getCurrentSuit(){
+        return this.currSuit;
+    },
+    
+    getCurrentRound(){
+        return this.currRound;
+    },
+    
+    isPlayerOya(local player){
+        return player === this.oyaPlayer;
+    },
+    
+    shuffle(){
+        local deck = this.deck;
+        
+        for(local i = #deck - 1; i > 0; --i){
+            local j = Math.randInt(0, i + 1);
+            local temp = deck[i];
+            deck[i] = deck[j];
+            deck[j] = temp;
+        }
+        
+        this.drawIdx = 0;
+    },
+    
+    draw(){
+        return this.deck[this.drawIdx++];
+    },
+    
+    processMove(local move){
+        if(move.type === MOVE_TYPES.DROP){
+            IO.println("Dropped " .. move.cards[0]);
+            this.table.append(move.cards).sort(cardComparator);
+        }else{
+            IO.println("Played " .. move.cards[0]);
+            IO.println("Took " .. move.cards.slice(1).join(', '));
+            this.table.removeAll(move.cards);
+            this.currPlayer.addToPlayed(move.cards);
+        }
+    },
+    
+    printHeading(local str, local padChar){
+        local leftPad = (80 - #str) / 2;
+        local rightPad = 80 - #str - leftPad;
+        
+        IO.println(str.padBegin(leftPad + #str, padChar).padEnd(leftPad + #str + rightPad, padChar));
+    },
+    
+    configure(){
+        local optionKeys = OPTION_DEFINITIONS.keys();
+        
+        for(;;){
+            for(local idx: key in optionKeys)
+                IO.println("%2d) %-30s = %s [%s]".format(idx + 1, OPTION_DEFINITIONS[key].name, options[key], OPTION_DEFINITIONS[key].choices.join('/')));
+            
+            IO.println(" 0) Exit");
+            
+            local choice = getIntInput("What would you like to change? ", 0, #optionKeys);
+            
+            if(choice === 0)
+                return;
+            
+            local key = optionKeys[choice - 1];
+            local possible = OPTION_DEFINITIONS[key].choices;
+            
+            local valueIdx = possible.indexOf(options[key]);
+            
+            options[key] = possible[(valueIdx + 1) % #possible];
+        }
+    },
+    
+    checkWinCondition(local cards){
+        local suitCounts = [];
+        
+        for(local card in cards)
+            ++suitCounts[card.suit];
+        
+        if(suitCounts.some(&() => this === 4))
+            return INSTANT_WIN_CONDITIONS.TESHI;
+        else if(#suitCounts.filter(&() => this === 2) === 4)
+            return INSTANT_WIN_CONDITIONS.KUTTSUKI;
+        
+        return INSTANT_WIN_CONDITIONS.NONE;
+    },
+    
+    checkInvalidDeals(){
+        if(local tableWinCond = this.checkWinCondition(this.table)){
+            IO.println("%s was dealt to table, re-dealing.".format(tableWinCond));
+            return ROUND_STATES.REDEAL;
+        }
+        
+        local oyaWinCond = this.checkWinCondition(this.oyaPlayer.getHand());
+        local koWinCond = this.checkWinCondition(this.koPlayer.getHand());
+        
+        if(oyaWinCond && koWinCond){
+            IO.println("%s was dealt %s, and %s was dealt %s, re-dealing.".format(
+                this.oyaPlayer.getName(),
+                oyaWinCond,
+                this.koPlayer.getName(),
+                koWinCond
+            ));
+            return ROUND_STATES.REDEAL;
+        }
+        
+        if(oyaWinCond){
+            IO.println("%s! %s wins the round, for 6 points.".format(oyaWinCond, this.oyaPlayer.getName()));
+            this.oyaPlayer.addScore(6);
+            
+            return ROUND_STATES.SCORED;
+        }
+        
+        if(koWinCond){
+            IO.println("%s! %s wins the round, for 6 points.".format(koWinCond, this.koPlayer.getName()));
+            this.koPlayer.addScore(6);
+            
+            return ROUND_STATES.SCORED;
+        }
+        
+        return ROUND_STATES.PLAY;
+    },
+    
+    deal(){
+        this.shuffle();
+        this.oyaPlayer.resetCards();
+        this.koPlayer.resetCards();
+        this.table.erase();
+        
+        for(local i = 0; i < 8; ++i)
+            this.koPlayer.putInHand(this.draw());
+        
+        for(local i = 0; i < 8; ++i)
+            this.table.push(this.draw());
+        
+        this.table.sort(cardComparator);
+        
+        for(local i = 0; i < 8; ++i)
+           this.oyaPlayer.putInHand(this.draw());
+    },
+    
+    playRound(){
+        for(;;){
+            this.printHeading("%s's turn".format(this.currPlayer.getName()), '-');
+            
+            local playMove = this.currPlayer.makeMove(this, this.otherPlayer);
+            
+            this.currPlayer.removeCardsFromHand(playMove.cards);
+            
+            this.processMove(playMove);
+            
+            local drawn = this.draw();
+            
+            IO.println("Drew " .. drawn);
+            
+            local drawMove = this.currPlayer.handleDraw(this, this.otherPlayer, drawn);
+            
+            this.processMove(drawMove);
+            
+            local result = evaluateYaku(this, this.currPlayer.getPlayed(), this.otherPlayer.getPlayed(), playMove.cards.append(drawMove.cards));
+            
+            if(result.scored){
+                IO.println("Yaku formed:");
+                
+                for(local yaku in result.yaku)
+                    IO.println("  %s: %d".format(yaku.name, yaku.score));
+                
+                IO.println("  Total: " .. result.points);
+                
+                if(#this.currPlayer.getHand() !== 0 && this.currPlayer.willCallKoi(this, this.otherPlayer)){
+                    IO.println("Koi!");
+                }else{
+                    IO.println("%s wins the round, for %d points.".format(
+                        this.currPlayer.getName(),
+                        result.points
+                    ));
+                    
+                    this.currPlayer.addScore(result.points);
+                    
+                    return ROUND_STATES.SCORED;
+                }
+            }
+            
+            if(#this.currPlayer.getHand() === 0 && #this.otherPlayer.getHand() === 0){
+                IO.println("No hands were formed, beginning next round.");
+                
+                if(options.OYA_KEN){
+                    this.oyaPlayer.addScore(1);
+                }
+                
+                return ROUND_STATES.DRAW;
+            }
+            
+            local t = this.currPlayer;
+            this.currPlayer = this.otherPlayer;
+            this.otherPlayer = t;
+        }
+    },
+    
+    printGameResults(){
+        this.printHeading("End of game", '=');
+        
+        if(this.players[0].getScore() === this.players[1].getScore()){
+            IO.println("Tie game!");
+        }else{
+            local winner = this.players[0].getScore() > this.players[1].getScore() ? 0 : 1;
+            
+            IO.println("%s wins the game, %d to %d points!".format(
+                this.players[winner].getName(),
+                this.players[winner].getScore(),
+                this.players[1 - winner].getScore()
+            ));
+        }
+    },
+
+    run(){
+        this.initGame();
+        
+        do{
+            this.currPlayer = this.oyaPlayer;
+            this.otherPlayer = this.koPlayer;
+            
+            this.printHeading("Round #%d (%s)".format(this.currRound, Card.getSuitName(this.currSuit)), '=');
+            
+            local roundState;
+            
+            do{
+                this.deal();
+                
+                roundState = this.checkInvalidDeals();
+            }while(roundState === ROUND_STATES.REDEAL);
+            
+            if(roundState === ROUND_STATES.PLAY){
+                roundState = this.playRound();
+            }
+            
+            if(roundState === ROUND_STATES.SCORED){
+                this.koPlayer = this.otherPlayer;
+                this.oyaPlayer = this.currPlayer;
+            }
+            
+            this.printHeading("End of round #%d".format(this.currRound), '=');
+            
+            this.currSuit = (this.currSuit + 1) % 12;
+        }while(++this.currRound <= options.NUM_ROUNDS);
+        
+        this.printGameResults();
+    }
+};
+
+local game = new Game();
+
+IO.println("Welcome to Koi-Koi!");
+
+for(;;){
+    IO.println("1) Start game");
+    IO.println("2) Configuration");
+    IO.println("0) Exit");
+    
+    local choice = getIntInput("What would you like to do? ", 0, 2);
+    
+    if(choice === 1){
+        try{
+            game.run();
+        }catch(local e as PlayerExit){
+            continue;
+        }
+    }else if(choice === 2){
+        game.configure();
+    }else{
+        break;
+    }
+}
